@@ -1,7 +1,7 @@
 package com.yash.Patient_Queue_Management_System.service;
 
-import com.yash.Patient_Queue_Management_System.entity.QueueVisit;
 import com.yash.Patient_Queue_Management_System.entity.Patient;
+import com.yash.Patient_Queue_Management_System.entity.QueueVisit;
 import com.yash.Patient_Queue_Management_System.repository.PatientRepository;
 import com.yash.Patient_Queue_Management_System.repository.QueueVisitRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,21 +12,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
 
-/**
- * Core service for Patient Queue Management.
- *
- * How PriorityQueue works here:
- * -----------------------------------------------
- * Java's PriorityQueue is a min-heap by default (smallest first).
- * We reverse it using Comparator.comparingInt(...).reversed()
- * so that higher priority patients come out FIRST.
- *
- * Example:
- *   Patient A: priority 3 (general)
- *   Patient B: priority 7 (urgent)
- *   Patient C: priority 10 (critical)
- *   → serveNext() returns Patient C (priority 10) first.
- */
 @Service
 public class QueueService {
 
@@ -36,37 +21,26 @@ public class QueueService {
     @Autowired
     private QueueVisitRepository queueVisitRepository;
 
-    /**
-     * In-memory priority queue: patients with higher priority are served first.
-     * Comparator.comparingInt(Patient::getPriority).reversed()
-     * → turns min-heap into max-heap (highest priority = polled first)
-     */
+
     private final PriorityQueue<Patient> patientQueue =
             new PriorityQueue<>(Comparator.comparingInt(Patient::getPriority).reversed());
 
-    // -------------------------------------------------------
-    // 1. Add a patient (save to DB + add to in-memory queue)
-    // -------------------------------------------------------
 
-    /**
-     * Registers a new patient and adds them to the priority queue.
-     * Also creates a QueueVisit with status = "WAITING".
-     *
-     * @param name     Patient's full name
-     * @param priority Integer priority (higher = served sooner)
-     * @return Saved Patient object
-     */
+    // 1. ADD PATIENT
     public Patient addPatient(String name, int priority) {
-        // Save patient to DB
+
+        // Step 1: Build and save patient to database
         Patient patient = new Patient();
         patient.setName(name);
         patient.setPriority(priority);
         Patient savedPatient = patientRepository.save(patient);
+        // After save(), savedPatient.getId() is now populated by MySQL AUTO_INCREMENT
 
-        // Add to in-memory priority queue
+        // Step 2: Add to in-memory queue
+        // offer() inserts and re-arranges the heap so the highest priority stays at the top
         patientQueue.offer(savedPatient);
 
-        // Record a WAITING visit entry
+        // Step 3: Record a WAITING entry in queue_visit
         QueueVisit visit = new QueueVisit();
         visit.setPatient(savedPatient);
         visit.setStatus("WAITING");
@@ -75,26 +49,20 @@ public class QueueService {
 
         return savedPatient;
     }
+    // 2. SERVE NEXT PATIENT
 
-    // -------------------------------------------------------
-    // 2. Serve next patient (poll from queue + update DB)
-    // -------------------------------------------------------
-
-    /**
-     * Removes and returns the highest-priority patient from the queue.
-     * Records a QueueVisit with status = "SERVED".
-     *
-     * @return The next Patient to be served, or null if queue is empty
-     */
     public Patient serveNextPatient() {
-        // Poll removes the head (highest priority) from the queue
+
+        // Step 1: Remove highest-priority patient from queue
+        // poll() returns null if queue is empty (no exception thrown)
         Patient patient = patientQueue.poll();
 
+        // Step 2: Nothing to serve
         if (patient == null) {
-            return null; // Queue is empty
+            return null;
         }
 
-        // Log the visit as SERVED
+        // Step 3: Record SERVED visit in database
         QueueVisit visit = new QueueVisit();
         visit.setPatient(patient);
         visit.setStatus("SERVED");
@@ -103,28 +71,17 @@ public class QueueService {
 
         return patient;
     }
-
-    // -------------------------------------------------------
-    // 3. Get all patients from DB
-    // -------------------------------------------------------
-
+    // 3. GET ALL PATIENTS
     public List<Patient> getAllPatients() {
         return patientRepository.findAll();
     }
 
-    // -------------------------------------------------------
-    // 4. Get visit history for a patient
-    // -------------------------------------------------------
 
-
+    // 4. GET VISIT HISTORY FOR A PATIENT
     public List<QueueVisit> getVisitsByPatient(Long patientId) {
         return queueVisitRepository.findByPatientId(patientId);
     }
-
-    // -------------------------------------------------------
-    // 5. Get current queue size
-    // -------------------------------------------------------
-
+    // 5. GET CURRENT QUEUE SIZE
 
     public int getQueueSize() {
         return patientQueue.size();

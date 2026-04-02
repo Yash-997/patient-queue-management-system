@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,65 +18,60 @@ public class QueueController {
     @Autowired
     private QueueService queueService;
 
-    // -------------------------------------------------------
+
     // POST /api/queue/add
     // Add a new patient to the queue
-    // -------------------------------------------------------
 
     @PostMapping("/add")
-    public ResponseEntity<Patient> addPatient(@RequestBody Map<String, Object> body) {
-        String name = (String) body.get("name");
-        int priority = (Integer) body.get("priority");
+    public ResponseEntity<Patient> addPatient(@RequestBody Map<String, Object> requestBody) {
+        String name = (String) requestBody.get("name");
+        int priority = (Integer) requestBody.get("priority");
 
-        Patient saved = queueService.addPatient(name, priority);
-        return ResponseEntity.ok(saved);
+        Patient savedPatient = queueService.addPatient(name, priority);
+        return ResponseEntity.ok(savedPatient);
     }
 
-    // -------------------------------------------------------
     // GET /api/queue/serve
     // Serve the next highest-priority patient
-    // -------------------------------------------------------
 
     @GetMapping("/serve")
-    public ResponseEntity<?> serveNext() {
+    public ResponseEntity<?> serveNextPatient() {
         Patient patient = queueService.serveNextPatient();
 
         if (patient == null) {
-            return ResponseEntity
-                    .noContent()
-                    .build(); // 204: Queue is empty
+            // Queue is empty — return 204 No Content
+            return ResponseEntity.noContent().build();
         }
 
         return ResponseEntity.ok(patient);
     }
 
-    // -------------------------------------------------------
     // GET /api/queue/patients
-    // Get all patients in the database
-    // -------------------------------------------------------
+    // Get all registered patients from database
 
     @GetMapping("/patients")
     public ResponseEntity<List<Patient>> getAllPatients() {
-        return ResponseEntity.ok(queueService.getAllPatients());
+        List<Patient> patients = queueService.getAllPatients();
+        return ResponseEntity.ok(patients);
     }
 
-    // -------------------------------------------------------
+
     // GET /api/queue/visits/{patientId}
-    // Get visit history for a specific patient
-    // -------------------------------------------------------
+    // Get all visit records for a specific patient
 
     @GetMapping("/visits/{patientId}")
-    public ResponseEntity<List<QueueVisit>> getVisits(@PathVariable Long patientId) {
-        return ResponseEntity.ok(queueService.getVisitsByPatient(patientId));
+    public ResponseEntity<List<QueueVisit>> getVisitHistory(@PathVariable Long patientId) {
+        List<QueueVisit> visits = queueService.getVisitsByPatient(patientId);
+        return ResponseEntity.ok(visits);
     }
 
-    // -------------------------------------------------------
     // GET /api/queue/size
-    // Get current number of patients waiting in queue
-    // -------------------------------------------------------
+    // Get current number of patients in the in-memory queue
 
     @GetMapping("/size")
     public ResponseEntity<Map<String, Integer>> getQueueSize() {
-        return ResponseEntity.ok(Map.of("queueSize", queueService.getQueueSize()));
+        Map<String, Integer> response = new HashMap<>();
+        response.put("queueSize", queueService.getQueueSize());
+        return ResponseEntity.ok(response);
     }
 }
