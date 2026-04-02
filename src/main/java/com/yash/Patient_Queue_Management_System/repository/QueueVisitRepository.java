@@ -8,5 +8,9 @@ import java.util.List;
 
 @Repository
 public interface QueueVisitRepository extends JpaRepository<QueueVisit, Long> {
-    List<QueueVisit> findByPatientId(Long patientId);
+
+
+    List<QueueVisit> findByPatientIdOrderByVisitTimeDesc(Long patientId);
+
+    List<QueueVisit> findAllByOrderByVisitTimeDesc();
 }

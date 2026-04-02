@@ -1,23 +1,17 @@
 package com.yash.Patient_Queue_Management_System.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
-/**
- * Tracks each event in a patient's queue journey.
- *
- * Every time a patient is added (WAITING) or served (SERVED),
- * a new QueueVisit row is created with a timestamp and status.
- *
- * No Lombok — all getters, setters, and constructors written manually.
- */
+
 @Entity
 @Table(name = "queue_visit")
 public class QueueVisit {
 
-    // -------------------------------------------------------
+    // ─────────────────────────────────────────────────────────
     // Fields
-    // -------------------------------------------------------
+    // ─────────────────────────────────────────────────────────
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -25,6 +19,7 @@ public class QueueVisit {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "patient_id", nullable = false)
+    @JsonIgnoreProperties({"visits", "hibernateLazyInitializer", "handler"})
     private Patient patient;
 
     @Column(nullable = false)
@@ -33,11 +28,15 @@ public class QueueVisit {
     @Column(name = "visit_time", nullable = false)
     private LocalDateTime visitTime;
 
-    // -------------------------------------------------------
     // Constructors
-    // -------------------------------------------------------
 
     public QueueVisit() {
+    }
+
+    public QueueVisit(Patient patient, String status, LocalDateTime visitTime) {
+        this.patient = patient;
+        this.status = status;
+        this.visitTime = visitTime;
     }
 
     public QueueVisit(Long id, Patient patient, String status, LocalDateTime visitTime) {
@@ -47,9 +46,7 @@ public class QueueVisit {
         this.visitTime = visitTime;
     }
 
-    // -------------------------------------------------------
     // Getters
-    // -------------------------------------------------------
 
     public Long getId() {
         return id;
@@ -67,9 +64,7 @@ public class QueueVisit {
         return visitTime;
     }
 
-    // -------------------------------------------------------
     // Setters
-    // -------------------------------------------------------
 
     public void setId(Long id) {
         this.id = id;
@@ -87,14 +82,13 @@ public class QueueVisit {
         this.visitTime = visitTime;
     }
 
-    // -------------------------------------------------------
     // toString
-    // -------------------------------------------------------
 
     @Override
     public String toString() {
         return "QueueVisit{" +
                 "id=" + id +
+                ", patientId=" + (patient != null ? patient.getId() : null) +
                 ", status='" + status + '\'' +
                 ", visitTime=" + visitTime +
                 '}';

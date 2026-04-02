@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.PriorityQueue;
 
 @Service
@@ -21,69 +22,84 @@ public class QueueService {
     @Autowired
     private QueueVisitRepository queueVisitRepository;
 
-
     private final PriorityQueue<Patient> patientQueue =
             new PriorityQueue<>(Comparator.comparingInt(Patient::getPriority).reversed());
 
+    private static final int MINUTES_PER_PATIENT = 5;
 
-    // 1. ADD PATIENT
+    // 1. ADD PATIENT  (with deduplication fix)
+
     public Patient addPatient(String name, int priority) {
 
-        // Step 1: Build and save patient to database
-        Patient patient = new Patient();
-        patient.setName(name);
-        patient.setPriority(priority);
-        Patient savedPatient = patientRepository.save(patient);
-        // After save(), savedPatient.getId() is now populated by MySQL AUTO_INCREMENT
+        // Step 1: Check if a patient with this name already exists
+        Optional<Patient> existingPatient = patientRepository.findByName(name);
 
-        // Step 2: Add to in-memory queue
-        // offer() inserts and re-arranges the heap so the highest priority stays at the top
-        patientQueue.offer(savedPatient);
+        Patient patient;
 
-        // Step 3: Record a WAITING entry in queue_visit
-        QueueVisit visit = new QueueVisit();
-        visit.setPatient(savedPatient);
-        visit.setStatus("WAITING");
-        visit.setVisitTime(LocalDateTime.now());
-        queueVisitRepository.save(visit);
+        if (existingPatient.isPresent()) {
+            // Step 2a: Reuse existing patient — update priority for this visit
+            patient = existingPatient.get();
+            patient.setPriority(priority);
+            patient = patientRepository.save(patient);   // persist priority update
 
-        return savedPatient;
-    }
-    // 2. SERVE NEXT PATIENT
-
-    public Patient serveNextPatient() {
-
-        // Step 1: Remove highest-priority patient from queue
-        // poll() returns null if queue is empty (no exception thrown)
-        Patient patient = patientQueue.poll();
-
-        // Step 2: Nothing to serve
-        if (patient == null) {
-            return null;
+        } else {
+            // Step 2b: First-time patient — create and save a new record
+            patient = new Patient(name, priority);
+            patient = patientRepository.save(patient);
         }
 
-        // Step 3: Record SERVED visit in database
-        QueueVisit visit = new QueueVisit();
-        visit.setPatient(patient);
-        visit.setStatus("SERVED");
-        visit.setVisitTime(LocalDateTime.now());
+        // Step 3: Add (or re-add) to in-memory priority queue
+        // offer() places the patient in the correct heap position
+        patientQueue.offer(patient);
+
+        // Step 4: Log a WAITING visit — always happens regardless of new/existing
+        QueueVisit visit = new QueueVisit(patient, "WAITING", LocalDateTime.now());
         queueVisitRepository.save(visit);
 
         return patient;
     }
+
+    // 2. SERVE NEXT PATIENT
+
+    public Patient serveNextPatient() {
+
+        // Remove the top of the max-heap
+        Patient patient = patientQueue.poll();
+
+        if (patient == null) {
+            return null;    // Queue was empty — nothing to serve
+        }
+
+        // Log the served event in DB
+        QueueVisit visit = new QueueVisit(patient, "SERVED", LocalDateTime.now());
+        queueVisitRepository.save(visit);
+
+        return patient;
+    }
+
     // 3. GET ALL PATIENTS
     public List<Patient> getAllPatients() {
         return patientRepository.findAll();
     }
 
-
-    // 4. GET VISIT HISTORY FOR A PATIENT
+    // 4. GET VISIT HISTORY FOR ONE PATIENT
     public List<QueueVisit> getVisitsByPatient(Long patientId) {
-        return queueVisitRepository.findByPatientId(patientId);
+        return queueVisitRepository.findByPatientIdOrderByVisitTimeDesc(patientId);
     }
-    // 5. GET CURRENT QUEUE SIZE
+
+    // 5. GET ALL VISITS (new — Enhancement 1)
+
+    public List<QueueVisit> getAllVisits() {
+        return queueVisitRepository.findAllByOrderByVisitTimeDesc();
+    }
+
+    // 6. GET QUEUE SIZE + ESTIMATED WAIT TIME (Enhancement 3)
 
     public int getQueueSize() {
         return patientQueue.size();
+    }
+
+    public int getEstimatedWaitTime() {
+        return patientQueue.size() * MINUTES_PER_PATIENT;
     }
 }
