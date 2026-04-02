@@ -1,7 +1,8 @@
 # 🏥 Patient Queue Management System
+### Spring Boot + Spring Data JPA + MySQL | No Lombok
 
-A Spring Boot REST API for managing a **priority-based patient queue** in a clinic or hospital setting.
-Patients with higher priority values are served before those with lower priority.
+A clean, beginner-friendly REST API that manages a **priority-based patient queue**.
+Patients with higher priority values are always served before those with lower values.
 
 ---
 
@@ -9,86 +10,118 @@ Patients with higher priority values are served before those with lower priority
 
 ```
 Patient_Queue_Management_System/
-├── pom.xml
-├── schema.sql                          ← MySQL setup + sample data
+│
+├── pom.xml                                         ← Maven dependencies
+├── schema.sql                                      ← MySQL tables + sample data
+│
 └── src/main/
     ├── resources/
-    │   └── application.properties      ← DB config
+    │   └── application.properties                  ← DB connection config
+    │
     └── java/com/yash/Patient_Queue_Management_System/
-        ├── PatientQueueManagementSystemApplication.java
-        ├── controller/
-        │   └── QueueController.java    ← REST endpoints
-        ├── service/
-        │   └── QueueService.java       ← Business logic + PriorityQueue
+        │
+        ├── PatientQueueManagementSystemApplication.java  ← App entry point
+        │
         ├── entity/
-        │   ├── Patient.java            ← Patient table mapping
-        │   └── QueueVisit.java         ← Visit tracking table
-        └── repository/
-            ├── PatientRepository.java
-            └── QueueVisitRepository.java
+        │   ├── Patient.java        ← Maps to `patient` table
+        │   └── QueueVisit.java     ← Maps to `queue_visit` table
+        │
+        ├── repository/
+        │   ├── PatientRepository.java       ← extends JpaRepository
+        │   └── QueueVisitRepository.java    ← extends JpaRepository
+        │
+        ├── service/
+        │   └── QueueService.java   ← PriorityQueue logic lives here
+        │
+        └── controller/
+            └── QueueController.java  ← REST endpoints
 ```
 
 ---
 
-## ⚙️ How PriorityQueue Works
+## 🧠 How the PriorityQueue Works
 
-Java's `PriorityQueue` is a **min-heap** by default — smallest number polled first.
+Java's `PriorityQueue` is a **min-heap** by default — lowest number exits first.
+We **reverse** the comparator to make it a **max-heap** — highest priority exits first.
 
-We flip this using:
 ```java
-new PriorityQueue<>(Comparator.comparingInt(Patient::getPriority).reversed());
+// In QueueService.java
+private final PriorityQueue<Patient> patientQueue =
+    new PriorityQueue<>(Comparator.comparingInt(Patient::getPriority).reversed());
 ```
 
-This makes it a **max-heap**, so the **highest priority** patient is always served first.
+### Serving Order Example
 
-### Example:
-| Patient     | Priority | Order Served |
-|-------------|----------|--------------|
-| Pooja Shah  | 1        | 4th          |
-| Mohan Das   | 3        | 3rd          |
-| Sita Devi   | 5        | 2nd          |
-| Arjun Mehta | 7        | (skipped)    |
-| Ravi Kumar  | 10       | **1st** ✅   |
+| Patient       | Priority | Served Order |
+|---------------|----------|-------------|
+| Pooja Shah    | 1        | 5th (last)  |
+| Mohan Das     | 3        | 4th         |
+| Sita Devi     | 5        | 3rd         |
+| Arjun Mehta   | 7        | 2nd         |
+| Ravi Kumar    | **10**   | **1st ✅**  |
+
+`poll()` always removes and returns the patient at the top of the max-heap.
 
 ---
 
-## 🚀 Setup & Run
+## 🗄️ Database Design
 
-### 1. Create MySQL Database
+```
+patient
+────────────────────────────────
+id          BIGINT  PK AUTO_INC
+name        VARCHAR NOT NULL
+priority    INT     NOT NULL
+
+queue_visit
+────────────────────────────────
+id          BIGINT   PK AUTO_INC
+patient_id  BIGINT   FK → patient.id
+status      VARCHAR  (WAITING | SERVED | CANCELLED)
+visit_time  DATETIME NOT NULL
+```
+
+**Relationship:** One `Patient` → Many `QueueVisit` records
+
+---
+
+## ▶️ How to Run
+
+### Step 1 — Set up MySQL
 ```sql
 CREATE DATABASE patient_queue_db;
 ```
-Then run `schema.sql` to create tables and insert sample data.
+Then run `schema.sql` in your MySQL client to create tables and load sample data.
 
-### 2. Configure application.properties
+### Step 2 — Configure DB in `application.properties`
 ```properties
 spring.datasource.url=jdbc:mysql://localhost:3306/patient_queue_db
 spring.datasource.username=root
 spring.datasource.password=your_password
 ```
 
-### 3. Run the App
+### Step 3 — Start the Application
 ```bash
 mvn spring-boot:run
 ```
-Server starts at: `http://localhost:8080`
+App runs at: `http://localhost:8080`
 
 ---
 
 ## 📡 API Endpoints
 
-### ➕ Add a Patient
-**POST** `/api/queue/add`
+### 1. Add a Patient
+```
+POST /api/queue/add
+Content-Type: application/json
 
-```json
-Request Body:
 {
   "name": "Ravi Kumar",
   "priority": 10
 }
 ```
 ```json
-Response (200 OK):
+200 OK
 {
   "id": 1,
   "name": "Ravi Kumar",
@@ -98,65 +131,58 @@ Response (200 OK):
 
 ---
 
-### 🔔 Serve Next Patient
-**GET** `/api/queue/serve`
-
+### 2. Serve Next Patient (highest priority)
+```
+GET /api/queue/serve
+```
 ```json
-Response (200 OK) — Returns highest-priority patient:
+200 OK — patient returned and removed from queue
 {
   "id": 1,
   "name": "Ravi Kumar",
   "priority": 10
 }
-```
-```
-Response (204 No Content) — If queue is empty
+
+204 No Content — queue is empty
 ```
 
 ---
 
-### 👥 Get All Patients
-**GET** `/api/queue/patients`
-
+### 3. Get All Patients
+```
+GET /api/queue/patients
+```
 ```json
-Response (200 OK):
+200 OK
 [
   { "id": 1, "name": "Ravi Kumar",  "priority": 10 },
-  { "id": 2, "name": "Sita Devi",   "priority": 5  },
-  { "id": 3, "name": "Arjun Mehta", "priority": 7  }
+  { "id": 2, "name": "Arjun Mehta", "priority": 7  },
+  { "id": 3, "name": "Sita Devi",   "priority": 5  }
 ]
 ```
 
 ---
 
-### 📋 Get Visit History for a Patient
-**GET** `/api/queue/visits/{patientId}`
-
-Example: `GET /api/queue/visits/1`
-
+### 4. Get Visit History for a Patient
+```
+GET /api/queue/visits/1
+```
 ```json
-Response (200 OK):
+200 OK
 [
-  {
-    "id": 1,
-    "status": "WAITING",
-    "visitTime": "2024-06-01T09:00:00"
-  },
-  {
-    "id": 6,
-    "status": "SERVED",
-    "visitTime": "2024-06-01T09:45:00"
-  }
+  { "id": 1, "status": "WAITING", "visitTime": "2024-06-01T09:00:00" },
+  { "id": 6, "status": "SERVED",  "visitTime": "2024-06-01T09:20:00" }
 ]
 ```
 
 ---
 
-### 🔢 Get Queue Size
-**GET** `/api/queue/size`
-
+### 5. Get Current Queue Size
+```
+GET /api/queue/size
+```
 ```json
-Response (200 OK):
+200 OK
 {
   "queueSize": 3
 }
@@ -164,35 +190,32 @@ Response (200 OK):
 
 ---
 
-## 🗄️ Entity Relationships
+## 🔁 Visit Status Values
 
-```
-patient (id, name, priority)
-    │
-    └──< queue_visit (id, patient_id FK, status, visit_time)
-```
-
-- One `Patient` → Many `QueueVisit` records
-- `queue_visit.patient_id` is a foreign key referencing `patient.id`
+| Status      | When Set                                      |
+|-------------|-----------------------------------------------|
+| `WAITING`   | When a patient is added via `/add`            |
+| `SERVED`    | When a patient is removed via `/serve`        |
+| `CANCELLED` | Can be set manually if visit is cancelled     |
 
 ---
 
-## 📝 Visit Status Values
+## ⚙️ Tech Stack
 
-| Status      | Meaning                              |
-|-------------|--------------------------------------|
-| `WAITING`   | Patient added to queue, not yet seen |
-| `SERVED`    | Patient was called and served        |
-| `CANCELLED` | Visit was cancelled (manual update)  |
-
----
-
-## 🛠️ Tech Stack
-
-| Layer      | Technology              |
-|------------|-------------------------|
-| Framework  | Spring Boot 3.2         |
-| Language   | Java 17                 |
-| Database   | MySQL 8                 |
+| Layer      | Technology                  |
+|------------|-----------------------------|
+| Framework  | Spring Boot 3.2             |
+| Language   | Java 17                     |
+| Database   | MySQL 8                     |
 | ORM        | Spring Data JPA / Hibernate |
-| Build Tool | Maven                   |
+| Build Tool | Maven                       |
+| Lombok     | ❌ Not used                  |
+
+---
+
+## 📝 Notes for Beginners
+
+- **No Lombok** — all getters, setters, and constructors are written manually in entity classes.
+- **PriorityQueue is in-memory** — it resets when the app restarts. Database records persist.
+- **No DTOs** — request/response uses entity classes directly (keeps it simple).
+- **No authentication** — this is a bare REST API focused on queue logic.
